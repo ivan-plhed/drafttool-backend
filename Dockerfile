@@ -1,4 +1,12 @@
-FROM ubuntu:latest
-LABEL authors="norted"
+# Build stage (JDK needed for compilation)
+FROM eclipse-temurin:21-jdk AS builder
+WORKDIR /app
+COPY . .
+RUN mvn clean package -DskipTests
 
-ENTRYPOINT ["top", "-b"]
+# Runtime stage (JRE only - smaller image)
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY --from=builder /app/target/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
