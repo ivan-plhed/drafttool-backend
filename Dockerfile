@@ -1,25 +1,35 @@
 # Build stage
 FROM eclipse-temurin:21-jdk as builder
 
-# 1. Copy build files
+# 1. Create optimal layer caching for dependencies
+WORKDIR /workspace
 COPY mvnw .
 COPY .mvn .mvn
 COPY pom.xml .
-COPY src src
+RUN ./mvnw dependency:go-offline -B
 
-# Make mvnw executable and BUILD THE DAMN THING
-RUN chmod +x mvnw && \
-    ./mvnw clean package -DskipTests && \
-    ls -la /app/target/ # Debug: show me the damn files
+# 2. Build application
+COPY src src
+RUN ./mvnw package -DskipTests
+
+# 3. Extract the built JAR path from Maven output
+RUN JAR_FILE=$(find /workspace/target -name '*.jar' -not -name '*-sources.jar' -not -name 'original-*.jar*' | head -n 1) && \
+    echo "JAR_PATH=${JAR_FILE}" > /workspace/jar-path.env
 
 # Runtime stage
 FROM eclipse-temurin:21-jre
-
 WORKDIR /app
 
-# Explicitly copy the jar (no wildcards)
-COPY --from=builder /app/target/your-application-*.jar app.jar
+# Get the JAR path from build stage
+COPY --from=builder /workspace/jar-path.env .
+RUN source /app/jar-path.env && \
+    echo "Using JAR file: ${JAR_PATH}" && \
+    cp ${JAR_PATH} /app/app.jar && \
+    rm /app/jar-path.env
 
+# Production-ready settings
 EXPOSE 8080
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
+HEALTHCHECK --interval=30s --timeout=5s CMD curl -f http://localhost:8080/actuator/health || exit 1
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar /app/app.jar"]
