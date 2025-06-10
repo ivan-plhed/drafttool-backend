@@ -38,11 +38,11 @@ public class FetchDataScheduled {
     private final UserService userService;
     private final ChampionService championService;
 
-    @PostConstruct
-    @Transactional
-    public void init() {
-        fetchData();
-    }
+//    @PostConstruct
+//    @Transactional
+//    public void init() {
+//        fetchData();
+//    }
 
     @Scheduled(cron = "0 0 0 * * ?")
     @Transactional
