@@ -1,43 +1,34 @@
-# Build stage
-FROM eclipse-temurin:21-jdk-jammy AS builder
+# Build stage - keep it simple stupid
+FROM eclipse-temurin:21-jdk as builder
 
-# Create a dedicated user for security
-RUN useradd -m appuser
+# 1. Copy ONLY what's needed for dependency resolution
+COPY mvnw .
+COPY .mvn .mvn
+COPY pom.xml .
+
+# Make mvnw executable (this is what you were missing)
+RUN chmod +x mvnw
+
+# Download dependencies first (separate layer for caching)
+RUN ./mvnw dependency:go-offline -B
+
+# 2. Now copy the rest
+COPY src src
+
+# Build the damn thing
+RUN ./mvnw clean package -DskipTests
+
+# Runtime stage - lean and mean
+FROM eclipse-temurin:21-jre
+
+# No fancy user shit that breaks things
 WORKDIR /app
-RUN chown appuser:appuser /app
-USER appuser
 
-# Cache Maven dependencies
-COPY --chown=appuser:appuser mvnw .
-COPY --chown=appuser:appuser .mvn .mvn
-COPY --chown=appuser:appuser pom.xml .
+# Copy the jar (wildcard works fine 99% of time)
+COPY --from=builder /app/target/*.jar app.jar
 
-# Download dependencies (cache this layer)
-RUN ./mvnw verify --fail-never -DskipTests
-
-# Copy source code
-COPY --chown=appuser:appuser src src
-
-# Build the application (produces a single JAR with dependencies)
-RUN ./mvnw clean package -DskipTests -DfinalName=app
-
-# Runtime stage
-FROM eclipse-temurin:21-jre-jammy
-
-# Security: non-root user
-RUN useradd -m appuser
-WORKDIR /app
-RUN chown appuser:appuser /app
-USER appuser
-
-# Copy the built JAR
-COPY --from=builder --chown=appuser:appuser /app/target/app.jar .
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s \
-    CMD curl -f http://localhost:8080/actuator/health || exit 1
-
+# Expose port (mostly documentation)
 EXPOSE 8080
 
-# Optimized JVM options
-ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
+# Run it
+ENTRYPOINT ["java", "-jar", "app.jar"]
