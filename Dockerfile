@@ -2,14 +2,20 @@
 FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /app
 
-# Copy only pom.xml first to leverage layer caching
-COPY pom.xml .
-RUN ./mvnw dependency:go-offline -B
+# Copy mvnw and .mvn first
+COPY mvnw .
+COPY .mvn ./.mvn
 
-# Now copy all source code
+# Now copy pom.xml
+COPY pom.xml .
+
+# Make mvnw executable and download dependencies
+RUN chmod +x ./mvnw && \
+    ./mvnw dependency:go-offline -B
+
+# Copy full source code
 COPY . .
 
-RUN chmod +x ./mvnw
 # Build the app
 RUN ./mvnw clean package -DskipTests
 
