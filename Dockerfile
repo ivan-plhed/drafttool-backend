@@ -1,34 +1,25 @@
-# Build stage - keep it simple stupid
+# Build stage
 FROM eclipse-temurin:21-jdk as builder
 
-# 1. Copy ONLY what's needed for dependency resolution
+# 1. Copy build files
 COPY mvnw .
 COPY .mvn .mvn
 COPY pom.xml .
-
-# Make mvnw executable (this is what you were missing)
-RUN chmod +x mvnw
-
-# Download dependencies first (separate layer for caching)
-RUN ./mvnw dependency:go-offline -B
-
-# 2. Now copy the rest
 COPY src src
 
-# Build the damn thing
-RUN ./mvnw clean package -DskipTests
+# Make mvnw executable and BUILD THE DAMN THING
+RUN chmod +x mvnw && \
+    ./mvnw clean package -DskipTests && \
+    ls -la /app/target/ # Debug: show me the damn files
 
-# Runtime stage - lean and mean
+# Runtime stage
 FROM eclipse-temurin:21-jre
 
-# No fancy user shit that breaks things
 WORKDIR /app
 
-# Copy the jar (wildcard works fine 99% of time)
-COPY --from=builder /app/target/*.jar app.jar
+# Explicitly copy the jar (no wildcards)
+COPY --from=builder /app/target/your-application-*.jar app.jar
 
-# Expose port (mostly documentation)
 EXPOSE 8080
 
-# Run it
 ENTRYPOINT ["java", "-jar", "app.jar"]
